@@ -3,6 +3,7 @@ require('hardhat-deploy');
 require("hardhat-gas-reporter");
 require("@nomiclabs/hardhat-ethers");
 require('hardhat-abi-exporter');
+require("@nomiclabs/hardhat-etherscan");
 // require("hardhat-deploy-ethers");
 
 
@@ -55,5 +56,5 @@ module.exports = {
         artifacts: 'node_modules/@openzeppelin/build',
       },
     ],
-  },
+  }
 };

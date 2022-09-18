@@ -22,63 +22,28 @@ describe("Deme", function () {
 
     const deme = await Deme.attach(demeDeployment.address);
 
-    const block = await ethers.provider.getBlock()
+    const nextId = await deme.next_bill_id();
 
-    await deme.setupCheque({
+    const tx=  await deme.setupBill({
       amount: 1000,
       token: aliceToken.address,
       to: tester,
-      dates: [block.timestamp],
+      time_mode: 0,
     });
 
-    const claimable = await deme.claimableCheques(tester)
-    expect(claimable.length).to.equal(1);
-    console.log('claimable', claimable)
-    console.error(claimable)
-    const cheque = await deme.cheques(claimable[0])
-    console.log(cheque)
-    console.log(tester)
-    await deployments.execute('Deme', {from: tester, log: true}, 'claimCheques', claimable);
+    console.log(tx)
+    let bill = await deme.bills(nextId)
+    expect(bill.attempts).to.equal(0)
+    await deployments.execute('Deme', {from: tester, log: true}, 'claim', [nextId]);
+    bill = await deme.bills(nextId)
+    expect(bill.attempts).to.equal(1)
+    console.log(bill)
+    const nextTs = await deme.nextClaimBill(nextId);
+    console.log('next ts', nextTs);
 
     const balance = await deployments.read('AliceToken', 'balanceOf', tester);
     expect(balance).to.equal(1000);
-  })
-
-  it("Single cheque: send and claim", async function () {
-    const { deployer, tester } = await getNamedAccounts();
-    await deployments.fixture(['Deme']);
-
-    const aliceToken = await deployments.get('AliceToken');
-    const demeDeployment = await deployments.get('Deme');
-
-    await deployments.read('AliceToken', 'balanceOf', deployer);
-
-    await deployments.execute('AliceToken', {from: deployer, log: true}, 'approve', demeDeployment.address, 1000);
-
-    const Deme = await ethers.getContractFactory("Deme");
-
-    const deme = await Deme.attach(demeDeployment.address);
-
-    const block = await ethers.provider.getBlock()
-
-    await deme.setupCheque({
-      amount: 1000,
-      token: aliceToken.address,
-      to: tester,
-      dates: [block.timestamp, block.timestamp + 1000],
-    });
-
-    const claimable = await deme.claimableCheques(tester)
-    expect(claimable.length).to.equal(1);
-    console.log('claimable', claimable)
-    console.error(claimable)
-    const cheque = await deme.cheques(claimable[0])
-    console.log(cheque)
-    console.log(tester)
-    await deployments.execute('Deme', {from: tester, log: true}, 'claimCheques', claimable);
-
-    const balance = await deployments.read('AliceToken', 'balanceOf', tester);
-    expect(balance).to.equal(1000);
+    await expect(deployments.execute('Deme', {from: tester, log: true}, 'claim', [nextId])).to.be.reverted;
   })
 
 
@@ -96,20 +61,30 @@ describe("Deme", function () {
     const Deme = await ethers.getContractFactory("Deme");
 
     const deme = await Deme.attach(demeDeployment.address);
+    const nextId = await deme.next_bill_id();
 
-    const block = await ethers.provider.getBlock()
-
-    await deme.setupCheque({
+    await deme.setupBill({
       amount: 1000,
       token: aliceToken.address,
       to: tester,
-      dates: [block.timestamp, block.timestamp, block.timestamp],
+      time_mode: 0,
+    });
+    await deme.setupBill({
+      amount: 1000,
+      token: aliceToken.address,
+      to: tester,
+      time_mode: 0,
+    });
+    await deme.setupBill({
+      amount: 1000,
+      token: aliceToken.address,
+      to: tester,
+      time_mode: 0,
     });
 
-    const claimable = await deme.claimableCheques(tester)
-    expect(claimable.length).to.equal(3);
-    const cheque = await deme.cheques(claimable[0])
-    await deployments.execute('Deme', {from: tester, log: true}, 'claimCheques', claimable);
+    
+
+    await deployments.execute('Deme', {from: tester, log: true}, 'claim', [nextId, nextId + 1, nextId + 2]);
 
     const balance = await deployments.read('AliceToken', 'balanceOf', tester);
     expect(balance).to.equal(3000);
@@ -130,17 +105,47 @@ describe("Deme", function () {
 
     const deme = await Deme.attach(demeDeployment.address);
 
-    const block = await ethers.provider.getBlock()
+    const nextId = await deme.next_bill_id();
 
-    await deme.setupCheque({
-      amount: 1001,
+    await deme.setupBill({
+      amount: 1000,
       token: aliceToken.address,
       to: tester,
-      dates: [block.timestamp, block.timestamp, block.timestamp],
+      time_mode: 0,
     });
 
-    const claimable = await deme.claimableCheques(tester)
-    expect(claimable.length).to.equal(0);
+    const claimable = await deme.couldClaimBill(tester, nextId)
+    expect(claimable).to.equal(false);
+
+  })
+
+  it("Once cheque: expired check", async function () {
+    const { deployer, tester } = await getNamedAccounts();
+    await deployments.fixture(['Deme']);
+
+    const aliceToken = await deployments.get('AliceToken');
+    const demeDeployment = await deployments.get('Deme');
+
+    await deployments.read('AliceToken', 'balanceOf', deployer);
+
+    await deployments.execute('AliceToken', {from: deployer, log: true}, 'approve', demeDeployment.address, 10000);
+
+    const Deme = await ethers.getContractFactory("Deme");
+
+    const deme = await Deme.attach(demeDeployment.address);
+
+    const nextId = await deme.next_bill_id();
+
+    await deme.setupBill({
+      amount: 1000,
+      token: aliceToken.address,
+      to: tester,
+      time_mode: 0,
+    });
+
+    const claimable = await deme.couldClaimBill(tester, nextId)
+    expect(claimable).to.equal(false);
+
   })
 
 })
