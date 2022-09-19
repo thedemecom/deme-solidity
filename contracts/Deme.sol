@@ -4,30 +4,6 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@quant-finance/solidity-datetime/contracts/DateTime.sol";
 
-library SafeMath64 {
-/**
-  * @dev Adds two numbers, reverts on overflow.
-  */
-  function add(uint64 _a, uint64 _b) internal pure returns (uint64) {
-    uint64 c = _a + _b;
-    require(c >= _a);
-
-    return c;
-  }
-}
-
-library SafeMath8 {
-/**
-  * @dev Adds two numbers, reverts on overflow.
-  */
-  function add(uint8 _a, uint8 _b) internal pure returns (uint8) {
-    uint8 c = _a + _b;
-    require(c >= _a);
-
-    return c;
-  }
-}
-
 contract Deme{
     event SetupBill(address indexed from, address indexed to, address indexed token, uint256 amount, uint256 bill_id, uint8 time_mode);
     event PayBill(address indexed from, address indexed to, address indexed token, uint256 amount, uint256 bill_id, uint8 attempt);
@@ -74,7 +50,7 @@ contract Deme{
         uint8 mode, 
         uint64 initial_timestamp, 
         uint8 attempts
-    ) internal view returns (uint256) {
+    ) internal pure returns (uint256) {
         if (mode == 0) {
                 return DateTime.addMonths(initial_timestamp, attempts);
         } else {
@@ -127,10 +103,10 @@ contract Deme{
             IERC20(bill.token).transferFrom(bill.from, bill.to, bill.amount);
             amount = amount + bill.amount;
             emit PayBill(bill.from, bill.to, bill.token, bill.amount, bill_id, bill.attempts);
-            uint8 attempts = SafeMath8.add(bill.attempts, 1);
+            uint8 attempts = bill.attempts + 1;
             ts = _addTimeByMode(bill.time_mode, bill.initial_timestamp, attempts);
             while(ts <= block.timestamp) {
-                attempts = SafeMath8.add(attempts, 1);
+                attempts = attempts++;
                 ts = _addTimeByMode(bill.time_mode, bill.initial_timestamp, attempts);
             }
             bill.attempts = attempts;
@@ -162,10 +138,10 @@ contract Deme{
             IERC20(bill.token).transferFrom(bill.from, bill.to, bill.amount);
             amount = amount + bill.amount;
             emit PayBill(bill.from, bill.to, bill.token, bill.amount, bill_id, bill.attempts);
-            uint8 attempts = SafeMath8.add(bill.attempts, 1);
+            uint8 attempts = bill.attempts + 1;
             ts = _addTimeByMode(bill.time_mode, bill.initial_timestamp, attempts);
             while(ts <= block.timestamp) {
-                attempts = SafeMath8.add(attempts, 1);
+                attempts++;
                 ts = _addTimeByMode(bill.time_mode, bill.initial_timestamp, attempts);
             }
             bill.attempts = attempts;
