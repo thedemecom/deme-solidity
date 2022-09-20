@@ -22,14 +22,12 @@ contract Deme{
         uint8 time_mode;
         uint8 attempts;
         bool is_active;
-        address to;
         address from;
-        address token;
     }
 
     address public helper;
     uint256 public next_bill_id;
-    mapping(uint256 => Bill) public bills;
+    mapping(bytes32 => Bill) public bills;
     mapping(address => uint128) public feeRate;
 
     constructor() {
@@ -69,40 +67,33 @@ contract Deme{
     function setupBill(
         SetupBillCommand memory params
     ) external returns (uint256) {
-        uint112 amount = params.amount;
-        address to = params.to;
-        address token = params.token;
         uint256 bill_id = next_bill_id;
-        bills[bill_id] = Bill({
-            amount: amount,
+        bytes32 bill_hash = keccak256(abi.encodePacked(params.to, params.token, bill_id));
+        bills[bill_hash] = Bill({
+            amount: params.amount,
             attempts: 0,
             initial_timestamp: uint64(block.timestamp),
             time_mode: params.time_mode,
-            to: to,
             from: msg.sender,
-            token: token,
             is_active: true
         });
-        emit SetupBill(msg.sender, to, token, amount, bill_id, params.time_mode);
-        bill_id++;
-        next_bill_id = bill_id;
+        emit SetupBill(msg.sender, params.to, params.token, params.amount, bill_id, params.time_mode);
+        next_bill_id = bill_id + 1;
         return bill_id;
     }
 
-    function payoutHelp(uint112[] memory bill_ids, address userAddr, address tokenAddr) external onlyHelper {
-        uint128 feeRateHelper = feeRate[userAddr];
+    function payoutHelp(address claimer, address tokenAddr, uint112[] memory bill_ids) external onlyHelper {
+        uint128 feeRateHelper = feeRate[claimer];
         uint256 amount = 0;
         for (uint i = 0; i < bill_ids.length; i++) {
-            uint256 bill_id = bill_ids[i];
-            Bill memory bill = bills[bill_id];
+            bytes32 bill_hash = keccak256(abi.encodePacked(claimer, tokenAddr, bill_ids[i]));
+            Bill memory bill = bills[bill_hash];
             require(bill.is_active, "Bill should be available");
             uint256 ts = _addTimeByMode(bill.time_mode, bill.initial_timestamp, bill.attempts);
             require(ts <= block.timestamp, "Bill is not matured");
-            require(bill.to == userAddr || bill.from == userAddr, "should be user addr");
-            require(bill.token == tokenAddr, "Token should be same addr");
-            IERC20(bill.token).transferFrom(bill.from, bill.to, bill.amount);
+            IERC20(tokenAddr).transferFrom(bill.from, claimer, bill.amount);
             amount = amount + bill.amount;
-            emit PayBill(bill.from, bill.to, bill.token, bill.amount, bill_id, bill.attempts);
+            emit PayBill(bill.from, claimer, tokenAddr, bill.amount, bill_ids[i], bill.attempts);
             uint8 attempts = bill.attempts + 1;
             ts = _addTimeByMode(bill.time_mode, bill.initial_timestamp, attempts);
             while(ts <= block.timestamp) {
@@ -110,11 +101,11 @@ contract Deme{
                 ts = _addTimeByMode(bill.time_mode, bill.initial_timestamp, attempts);
             }
             bill.attempts = attempts;
-            bills[bill_id] = bill;
+            bills[bill_hash] = bill;
         }
         if (feeRateHelper > 0 && amount > 0) {
             IERC20(tokenAddr).transferFrom(
-                userAddr, 
+                claimer, 
                 helper, 
                 amount * feeRateHelper / 10000
             );
@@ -126,18 +117,22 @@ contract Deme{
         feeRate[msg.sender] = rate;
     }
 
-    function claim(uint112[] memory bill_ids) external returns (uint256) {
+    function claim(
+        address claimer, 
+        address tokenAddr, 
+        uint256[] memory bill_ids
+    ) external returns (uint256) {
         uint256 amount = 0;
         for (uint i = 0; i < bill_ids.length; i++) {
-            uint256 bill_id = bill_ids[i];
-            Bill memory bill = bills[bill_id];
+            bytes32 bill_hash = keccak256(abi.encodePacked(claimer, tokenAddr, bill_ids[i]));
+            Bill memory bill = bills[bill_hash];
             require(bill.is_active, "Bill should be available");
             uint256 ts = _addTimeByMode(bill.time_mode, bill.initial_timestamp, bill.attempts);
             require(ts <= block.timestamp, "Bill is not matured");
-            require(bill.from == msg.sender || bill.to == msg.sender,  "Should be payouted by sender or claimer");
-            IERC20(bill.token).transferFrom(bill.from, bill.to, bill.amount);
+            require(bill.from == msg.sender || claimer == msg.sender,  "Should be payouted by sender or claimer");
+            IERC20(tokenAddr).transferFrom(bill.from, claimer, bill.amount);
             amount = amount + bill.amount;
-            emit PayBill(bill.from, bill.to, bill.token, bill.amount, bill_id, bill.attempts);
+            emit PayBill(bill.from, claimer, tokenAddr, bill.amount, bill_ids[i], bill.attempts);
             uint8 attempts = bill.attempts + 1;
             ts = _addTimeByMode(bill.time_mode, bill.initial_timestamp, attempts);
             while(ts <= block.timestamp) {
@@ -145,37 +140,43 @@ contract Deme{
                 ts = _addTimeByMode(bill.time_mode, bill.initial_timestamp, attempts);
             }
             bill.attempts = attempts;
-            bills[bill_id] = bill;
+            bills[bill_hash] = bill;
         }
         return amount;
     }
 
-    function cancelBills(uint112[] memory bill_ids) external {
+    function cancelBills(address claimer, address tokenAddr,  uint256[] memory bill_ids) external {
         for (uint i = 0; i < bill_ids.length; i++) {
-            uint256 bill_id = bill_ids[i];
-            Bill memory bill = bills[bill_id];
+            bytes32 bill_hash = keccak256(abi.encodePacked(claimer, tokenAddr, bill_ids[i]));
+            Bill memory bill = bills[bill_hash];
             require(bill.is_active, "Bill should be available");
-            require(bill.from == msg.sender || bill.to == msg.sender, "Only sender or receiver can cancel bill");
+            require(bill.from == msg.sender || claimer == msg.sender, "Only sender or receiver can cancel bill");
             bill.is_active = false;
-            bills[bill_id] = bill;
-            emit CancelBill(msg.sender, bill.to, bill.token, bills[bill_id].amount, bill_id);
+            bills[bill_hash] = bill;
+            emit CancelBill(bill.from, claimer, tokenAddr, bill.amount, bill_ids[i]);
         }
     }
 
-    function couldClaimBill(address claimer, uint256 bill_id) external view returns (bool) {
-        Bill memory bill = bills[bill_id];
-        uint256 allowance = IERC20(bill.token).allowance(bill.from, bill.to);
+    function couldClaimBill(address claimer, address tokenAddr,  uint256 bill_id) external view returns (bool) {
+        bytes32 bill_hash = keccak256(abi.encodePacked(claimer, tokenAddr, bill_id));
+        Bill memory bill = bills[bill_hash];
+        uint256 allowance = IERC20(tokenAddr).allowance(bill.from, claimer);
         uint256 ts = _addTimeByMode(bill.time_mode, bill.initial_timestamp, bill.attempts);
 
         return bill.is_active
-            && (bill.from == claimer || bill.to == claimer) 
             && ts <= block.timestamp 
             && allowance >= bill.amount;
     }
 
-    function nextClaimBill(uint256 bill_id) external view returns (uint256) {
-        Bill memory bill = bills[bill_id];
+    function nextClaimBill(address claimer, address tokenAddr, uint256 bill_id) external view returns (uint256) {
+        bytes32 bill_hash = keccak256(abi.encodePacked(claimer, tokenAddr, bill_id));
+        Bill memory bill = bills[bill_hash];
         uint256 ts = _addTimeByMode(bill.time_mode, bill.initial_timestamp, bill.attempts);
         return ts;
+    }
+
+    function billInfo(address claimer, address tokenAddr, uint256 bill_id) external view returns (Bill memory) {
+        bytes32 bill_hash = keccak256(abi.encodePacked(claimer, tokenAddr, bill_id));
+        return bills[bill_hash];
     }
 }

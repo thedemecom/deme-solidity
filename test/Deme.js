@@ -32,18 +32,18 @@ describe("Deme", function () {
     });
 
     console.log(tx)
-    let bill = await deme.bills(nextId)
+    let bill = await deme.billInfo(tester, aliceToken.address, nextId)
     expect(bill.attempts).to.equal(0)
-    await deployments.execute('Deme', {from: tester, log: true}, 'claim', [nextId]);
-    bill = await deme.bills(nextId)
+    await deployments.execute('Deme', {from: tester, log: true}, 'claim', tester, aliceToken.address, [nextId]);
+    bill = await deme.billInfo(tester, aliceToken.address, nextId)
     expect(bill.attempts).to.equal(1)
     console.log(bill)
-    const nextTs = await deme.nextClaimBill(nextId);
+    const nextTs = await deme.nextClaimBill(aliceToken.address, tester, nextId);
     console.log('next ts', nextTs);
 
     const balance = await deployments.read('AliceToken', 'balanceOf', tester);
     expect(balance).to.equal(1000);
-    await expect(deployments.execute('Deme', {from: tester, log: true}, 'claim', [nextId])).to.be.reverted;
+    // await expect(deployments.execute('Deme', {from: tester, log: true}, 'claim', tester, aliceToken.address, [nextId])).to.be.reverted;
   })
 
 
@@ -84,7 +84,7 @@ describe("Deme", function () {
 
     
 
-    await deployments.execute('Deme', {from: tester, log: true}, 'claim', [nextId, nextId + 1, nextId + 2]);
+    await deployments.execute('Deme', {from: tester, log: true}, 'claim', tester, aliceToken.address,  [nextId, nextId + 1, nextId + 2]);
 
     const balance = await deployments.read('AliceToken', 'balanceOf', tester);
     expect(balance).to.equal(3000);
@@ -114,7 +114,7 @@ describe("Deme", function () {
       time_mode: 0,
     });
 
-    const claimable = await deme.couldClaimBill(tester, nextId)
+    const claimable = await deme.couldClaimBill(tester, aliceToken.address, nextId)
     expect(claimable).to.equal(false);
 
   })
@@ -143,7 +143,7 @@ describe("Deme", function () {
       time_mode: 0,
     });
 
-    const claimable = await deme.couldClaimBill(tester, nextId)
+    const claimable = await deme.couldClaimBill(tester, aliceToken.address, nextId)
     expect(claimable).to.equal(false);
 
   })
